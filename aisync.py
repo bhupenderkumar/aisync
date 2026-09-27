@@ -341,8 +341,15 @@ def oc_session_exists(sid):
 
 
 def oc_export(sid):
-    p = subprocess.run(["opencode", "export", sid], capture_output=True, text=True)
-    out = p.stdout
+    # opencode truncates stdout at 64KB when writing to a pipe, so write to a file
+    fd, path = tempfile.mkstemp(suffix=".json", prefix="aisync-export-")
+    try:
+        with os.fdopen(fd, "w") as f:
+            p = subprocess.run(["opencode", "export", sid], stdout=f, stderr=subprocess.PIPE, text=True)
+        with open(path, encoding="utf-8", errors="replace") as f:
+            out = f.read()
+    finally:
+        os.unlink(path)
     i = out.find("{")
     if p.returncode != 0 or i < 0:
         raise RuntimeError("opencode export failed: %s" % (p.stderr.strip() or out[:300]))
@@ -440,6 +447,11 @@ def oc_append_messages(data, turns):
             m = oc_build_message("user", t["text"], ts, sid, cwd, None, model)
             last_user = m["info"]["id"]
         else:
+            if last_user is None:  # OpenCode requires every assistant message to have a parent user message
+                u = oc_build_message("user", "(conversation started without a user message)", ts, sid, cwd, None, model)
+                msgs.append(u)
+                new_ids.append(u["info"]["id"])
+                last_user = u["info"]["id"]
             m = oc_build_message("assistant", t["text"], ts, sid, cwd, last_user, model)
         msgs.append(m)
         new_ids.append(m["info"]["id"])
