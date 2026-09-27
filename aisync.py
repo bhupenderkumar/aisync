@@ -360,7 +360,10 @@ def oc_import(data):
     fd, path = tempfile.mkstemp(suffix=".json", prefix="aisync-")
     with os.fdopen(fd, "w") as f:
         json.dump(data, f, ensure_ascii=False)
-    p = subprocess.run(["opencode", "import", path], capture_output=True, text=True)
+    # opencode import assigns the session to the directory it runs in, not info.directory
+    cwd = data.get("info", {}).get("directory")
+    cwd = cwd if cwd and os.path.isdir(cwd) else None
+    p = subprocess.run(["opencode", "import", path], capture_output=True, text=True, cwd=cwd)
     os.unlink(path)
     if p.returncode != 0:
         raise RuntimeError("opencode import failed: %s" % (p.stderr.strip() or p.stdout.strip()))
